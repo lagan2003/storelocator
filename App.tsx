@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import MapContainer from './components/MapContainer';
 import AIAnalysisModal from './components/AIAnalysisModal';
-import { SimulationParams, Store, LatLng } from './types';
-import { generateStores } from './services/storeGenerator';
+import { SimulationParams, Store, LatLng, StoreCategory } from './types';
+import { generateStores, calculateDistance } from './services/storeGenerator';
 import { analyzeStoreDistribution } from './services/geminiService';
+import { parseExcelFile } from './services/excelService';
 
 // Default user location or center (e.g., Dallas, TX)
 const DEFAULT_CENTER: LatLng = { lat: 32.7767, lng: -96.7970 };
@@ -19,6 +20,7 @@ const App: React.FC = () => {
   });
 
   const [stores, setStores] = useState<Store[]>([]);
+  const [uploadedStores, setUploadedStores] = useState<Store[] | null>(null);
   const [center, setCenter] = useState<LatLng>(DEFAULT_CENTER);
   
   // AI Analysis State
@@ -43,16 +45,77 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Effect: When Center, MaxDistance or UploadedStores change, and we have uploaded data, re-filter automatically
+  useEffect(() => {
+    if (uploadedStores) {
+      applyUploadedDataFilter();
+    }
+  }, [center, params.maxDistance, uploadedStores]);
+
+  const applyUploadedDataFilter = () => {
+    if (!uploadedStores) return;
+
+    // Filter uploaded stores by distance to current center
+    const filteredStores = uploadedStores.filter(store => {
+      const dist = calculateDistance(center, { lat: store.lat, lng: store.lng });
+      return dist <= params.maxDistance;
+    });
+
+    // Update stats in params based on filtered set
+    const countAPlus = filteredStores.filter(s => s.category === StoreCategory.A_PLUS).length;
+    const countA = filteredStores.filter(s => s.category === StoreCategory.A).length;
+    const countB = filteredStores.filter(s => s.category === StoreCategory.B).length;
+
+    setParams(prev => ({
+      ...prev,
+      countAPlus,
+      countA,
+      countB,
+      totalStores: filteredStores.length
+    }));
+
+    setStores(filteredStores);
+  };
+
   const handleGenerate = () => {
-    // Generate new stores based on current params and center
-    const newStores = generateStores(
-      center,
-      params.countAPlus,
-      params.countA,
-      params.countB,
-      params.maxDistance
-    );
-    setStores(newStores);
+    if (uploadedStores) {
+      // If we have uploaded data, generation simply means re-applying filters (which is also handled by effect, but explicit button acts as refresh)
+      applyUploadedDataFilter();
+    } else {
+      // Generate new random stores based on current params and center
+      const newStores = generateStores(
+        center,
+        params.countAPlus,
+        params.countA,
+        params.countB,
+        params.maxDistance
+      );
+      setStores(newStores);
+    }
+  };
+
+  const handleFileUpload = async (file: File) => {
+    try {
+      const parsedStores = await parseExcelFile(file);
+      setUploadedStores(parsedStores);
+      // Logic continues in useEffect to filter these
+    } catch (error) {
+      alert("Failed to parse Excel file. Ensure it contains Lat/Lng columns.");
+      console.error(error);
+    }
+  };
+
+  const handleClearFile = () => {
+    setUploadedStores(null);
+    setStores([]); // Clear map
+    // Reset params to some defaults or keep as is? Let's reset counts to 0 or defaults
+    setParams(prev => ({
+      ...prev,
+      countAPlus: 10,
+      countA: 40,
+      countB: 50,
+      totalStores: 100
+    }));
   };
 
   const handleAnalyze = async () => {
@@ -80,6 +143,9 @@ const App: React.FC = () => {
           onGenerate={handleGenerate}
           onAnalyze={handleAnalyze}
           isAnalyzing={isAnalyzing}
+          onFileUpload={handleFileUpload}
+          onClearFile={handleClearFile}
+          hasUploadedData={!!uploadedStores}
         />
       </div>
 

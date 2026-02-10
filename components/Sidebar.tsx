@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { SimulationParams } from '../types';
-import { RefreshCw, MapPin, BarChart3, Info } from 'lucide-react';
+import { RefreshCw, MapPin, BarChart3, Info, Upload, FileSpreadsheet, Trash2 } from 'lucide-react';
 
 interface SidebarProps {
   params: SimulationParams;
@@ -8,6 +8,9 @@ interface SidebarProps {
   onGenerate: () => void;
   onAnalyze: () => void;
   isAnalyzing: boolean;
+  onFileUpload: (file: File) => void;
+  onClearFile: () => void;
+  hasUploadedData: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -15,8 +18,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   onUpdateParams,
   onGenerate,
   onAnalyze,
-  isAnalyzing
+  isAnalyzing,
+  onFileUpload,
+  onClearFile,
+  hasUploadedData
 }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string>('');
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -24,6 +32,20 @@ const Sidebar: React.FC<SidebarProps> = ({
       ...params,
       [name]: parseInt(value) || 0,
     });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setFileName(file.name);
+      onFileUpload(file);
+    }
+  };
+
+  const handleClear = () => {
+    setFileName('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    onClearFile();
   };
 
   // Calculate actual total based on categories for display
@@ -37,11 +59,50 @@ const Sidebar: React.FC<SidebarProps> = ({
           Store Locator
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Configure parameters to simulate store distribution.
+          Configure parameters or upload data to simulate store distribution.
         </p>
       </div>
 
       <div className="p-6 space-y-6 flex-1">
+        
+        {/* File Upload Section */}
+        <div className="bg-white border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-400 transition cursor-pointer relative"
+             onClick={() => !hasUploadedData && fileInputRef.current?.click()}>
+           
+           {!hasUploadedData ? (
+             <>
+               <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+               <p className="text-sm font-medium text-gray-600">Upload Excel File</p>
+               <p className="text-xs text-gray-400 mt-1">.xlsx or .xls (Lat, Lng, Category)</p>
+             </>
+           ) : (
+             <div className="flex items-center justify-between">
+               <div className="flex items-center gap-2 text-left">
+                  <FileSpreadsheet className="text-green-600 h-8 w-8" />
+                  <div>
+                    <p className="text-sm font-bold text-gray-800 truncate max-w-[150px]">{fileName}</p>
+                    <p className="text-xs text-green-600 font-medium">Data Loaded</p>
+                  </div>
+               </div>
+               <button 
+                 onClick={(e) => { e.stopPropagation(); handleClear(); }}
+                 className="p-2 hover:bg-red-50 text-red-500 rounded-full transition"
+                 title="Clear File"
+               >
+                 <Trash2 size={18} />
+               </button>
+             </div>
+           )}
+           <input
+             type="file"
+             ref={fileInputRef}
+             className="hidden"
+             accept=".xlsx, .xls"
+             onChange={handleFileChange}
+             disabled={hasUploadedData}
+           />
+        </div>
+
         {/* Global Settings */}
         <div className="space-y-4">
           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
@@ -58,31 +119,36 @@ const Sidebar: React.FC<SidebarProps> = ({
               value={params.maxDistance}
               onChange={handleChange}
               min="1"
-              max="5000"
+              max="10000"
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
             />
+            {hasUploadedData && (
+              <p className="text-xs text-blue-600 mt-1">Filtering uploaded stores by distance from center.</p>
+            )}
           </div>
 
           <div>
              <div className="flex justify-between items-center mb-1">
                 <label className="block text-sm font-medium text-gray-700">
-                  Target Total Stores
+                  {hasUploadedData ? 'Visible Stores' : 'Target Total Stores'}
                 </label>
                 <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                  Limit
+                  {hasUploadedData ? 'Count' : 'Limit'}
                 </span>
              </div>
             <input
               type="number"
               name="totalStores"
-              value={params.totalStores}
+              value={hasUploadedData ? categorizedTotal : params.totalStores}
               onChange={handleChange}
               min="0"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              disabled={hasUploadedData}
+              className={`w-full px-4 py-2 border rounded-md outline-none transition ${
+                hasUploadedData 
+                  ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed' 
+                  : 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+              }`}
             />
-             <p className="text-xs text-gray-500 mt-1">
-               Used as a reference limit or validation cap.
-             </p>
           </div>
         </div>
 
@@ -92,6 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="space-y-4">
           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
             Category Breakdown
+            {hasUploadedData && <span className="ml-2 text-xs font-normal text-gray-500">(Read-only)</span>}
           </h2>
           
           <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
@@ -105,7 +172,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 value={params.countAPlus}
                 onChange={handleChange}
                 min="0"
-                className="w-full px-4 py-2 border border-purple-200 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition"
+                disabled={hasUploadedData}
+                className={`w-full px-4 py-2 border rounded-md outline-none transition ${
+                   hasUploadedData 
+                    ? 'bg-purple-50 border-transparent text-purple-800 font-bold' 
+                    : 'border-purple-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500'
+                }`}
               />
             </div>
           </div>
@@ -120,7 +192,12 @@ const Sidebar: React.FC<SidebarProps> = ({
               value={params.countA}
               onChange={handleChange}
               min="0"
-              className="w-full px-4 py-2 border border-green-200 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+              disabled={hasUploadedData}
+              className={`w-full px-4 py-2 border rounded-md outline-none transition ${
+                 hasUploadedData 
+                  ? 'bg-green-50 border-transparent text-green-800 font-bold' 
+                  : 'border-green-200 focus:ring-2 focus:ring-green-500 focus:border-green-500'
+              }`}
             />
           </div>
 
@@ -134,11 +211,16 @@ const Sidebar: React.FC<SidebarProps> = ({
               value={params.countB}
               onChange={handleChange}
               min="0"
-              className="w-full px-4 py-2 border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              disabled={hasUploadedData}
+              className={`w-full px-4 py-2 border rounded-md outline-none transition ${
+                 hasUploadedData 
+                  ? 'bg-blue-50 border-transparent text-blue-800 font-bold' 
+                  : 'border-blue-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+              }`}
             />
           </div>
 
-          {categorizedTotal > params.totalStores && (
+          {!hasUploadedData && categorizedTotal > params.totalStores && (
              <div className="flex items-start gap-2 text-amber-600 bg-amber-50 p-3 rounded text-sm">
                 <Info size={16} className="mt-0.5 shrink-0"/>
                 <span>
@@ -157,7 +239,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-black text-white py-3 px-4 rounded-lg font-medium transition shadow-lg hover:shadow-xl active:scale-95"
         >
           <RefreshCw size={18} />
-          Generate Map
+          {hasUploadedData ? 'Refresh Filter' : 'Generate Map'}
         </button>
         
         <button
