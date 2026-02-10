@@ -1,0 +1,5 @@
+{
+  "name": "Store Locator & Analyzer",
+  "description": "A split-screen dashboard to visualize store categories on a map and analyze distribution using Gemini AI.",
+  "requestFramePermissions": []
+}
